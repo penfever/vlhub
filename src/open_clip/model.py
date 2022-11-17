@@ -582,6 +582,115 @@ class CLIP(nn.Module):
 
         return image_features, text_features, self.logit_scale.exp()
 
+class RN50IMAGES(nn.Module):
+    def __init__(
+            self,
+            embed_dim: int,
+            vision_cfg: CLIPVisionCfg,
+            quick_gelu: bool = False,
+    ):
+        super().__init__()
+        if isinstance(vision_cfg, dict):
+            vision_cfg = CLIPVisionCfg(**vision_cfg)
+
+
+        # OpenAI models are pretrained w/ QuickGELU but native nn.GELU is both faster and more
+        # memory efficient in recent PyTorch releases (>= 1.10).
+        # NOTE: timm models always use native GELU regardless of quick_gelu flag.
+        act_layer = QuickGELU if quick_gelu else nn.GELU
+
+        if vision_cfg.timm_model_name:
+            self.visual = TimmModel(
+                vision_cfg.timm_model_name,
+                pretrained=vision_cfg.timm_model_pretrained,
+                pool=vision_cfg.timm_pool,
+                proj=vision_cfg.timm_proj,
+                embed_dim=embed_dim,
+                image_size=vision_cfg.image_size
+            )
+            act_layer = nn.GELU  # so that text transformer doesn't use QuickGELU w/ timm models
+        elif isinstance(vision_cfg.layers, (tuple, list)):
+            vision_heads = vision_cfg.width * 32 // vision_cfg.head_width
+            self.visual = ModifiedResNet(
+                layers=vision_cfg.layers,
+                output_dim=embed_dim,
+                heads=vision_heads,
+                image_size=vision_cfg.image_size,
+                width=vision_cfg.width
+            )
+        else:
+            vision_heads = vision_cfg.width // vision_cfg.head_width
+            self.visual = VisualTransformer(
+                image_size=vision_cfg.image_size,
+                patch_size=vision_cfg.patch_size,
+                width=vision_cfg.width,
+                layers=vision_cfg.layers,
+                heads=vision_heads,
+                mlp_ratio=vision_cfg.mlp_ratio,
+                output_dim=embed_dim,
+                act_layer=act_layer,
+            )
+
+        
+        self.init_parameters()
+
+    def init_parameters(self):
+        
+        if hasattr(self.visual, 'init_parameters'):
+            self.visual.init_parameters()
+
+        
+    def build_attention_mask(self):
+        # lazily create causal attention mask, with full attention between the vision tokens
+        # pytorch uses additive attention mask; fill with -inf
+        mask = torch.empty(self.context_length, self.context_length)
+        mask.fill_(float("-inf"))
+        mask.triu_(1)  # zero out the lower diagonal
+        return mask
+
+    def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
+        # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
+        self.visual.lock(unlocked_groups=unlocked_groups, freeze_bn_stats=freeze_bn_stats)
+
+    def lock_text_tower(self, unlocked_groups=0):
+        self.transformer.lock(unlocked_groups=unlocked_groups)
+
+    @torch.jit.ignore
+    def set_grad_checkpointing(self, enable=True):
+        self.visual.set_grad_checkpointing(enable)
+        self.transformer.grad_checkpointing = enable
+
+    def encode_image(self, image):
+        return self.visual(image)
+
+    def encode_text(self, text):
+        x = self.token_embedding(text)  # [batch_size, n_ctx, d_model]
+
+        x = x + self.positional_embedding
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+
+        return x
+
+    def forward(self, image, text):
+        if image is None:
+            return self.encode_text(text)
+        elif text is None:
+            return self.encode_image(image)
+        image_features = self.encode_image(image)
+        image_features = F.normalize(image_features, dim=-1)
+
+        text_features = self.encode_text(text)
+        text_features = F.normalize(text_features, dim=-1)
+
+        return image_features, text_features, self.logit_scale.exp()
+
 
 def convert_weights_to_fp16(model: nn.Module):
     """Convert applicable model parameters to fp16"""
