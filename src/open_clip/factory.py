@@ -12,7 +12,7 @@ import torch
 from torch import nn
 
 from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .model import CLIP, convert_weights_to_fp16, resize_pos_embed, SIMCLR
+from .model import CLIP, RN50IMAGES, convert_weights_to_fp16, resize_pos_embed, SIMCLR
 from .openai import load_openai_model
 from .pretrained import get_pretrained_cfg, download_pretrained
 from .transform import image_transform
@@ -259,7 +259,7 @@ def create_model(
                 assert False, 'pretrained image towers currently only supported for timm models'
 
         model = CLIP(**model_cfg)
-
+        
         pretrained_cfg = {}
         if pretrained:
             checkpoint_path = ''

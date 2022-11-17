@@ -29,7 +29,7 @@ def l2norm(t):
     return F.normalize(t, dim = -1, p = 2)
 
 def zero_shot_classifier(model, classnames, templates, args):
-    logging.debug("In zero-shot-classifer, classnames are {}".format(classnames))
+    # logging.debug("In zero-shot-classifer, classnames are {}".format(classnames))
     with torch.no_grad():
         zeroshot_weights = []
         for classname in tqdm(classnames):
@@ -41,7 +41,7 @@ def zero_shot_classifier(model, classnames, templates, args):
                     random.shuffle(l)
                     res.append(" ".join(l).strip())
             texts = tokenize(texts).to(args.device)  # tokenize
-            logging.debug("In zero-shot-classifer, tokens are {}".format(classnames))
+            # logging.debug("In zero-shot-classifer, tokens are {}".format(texts))
             if args.distributed and not args.horovod:
                 if args.model in ["coca"]:
                     images = torch.rand(len(texts), 3, 224, 224).to(args.device)
@@ -182,7 +182,7 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                         image_features = model.encode_image(images)
                         image_features = F.normalize(image_features, dim=-1)
                         logits = 100. * image_features @ classifier
-            
+                        
             # measure accuracy with objectnet adjustments
             if split == "objectnet" and args.integer_labels:
                 with open("./metadata/imagenet_to_objectnet.json","r") as f:
@@ -285,7 +285,6 @@ def imageNetIDToObjectNetID(prediction_class):
             prediction_class[i] = -1
 
 def zero_shot_eval(model, data, epoch, args):
-    #logging.debug(data)
     
     results = {}
     classifier = None
@@ -302,11 +301,18 @@ def zero_shot_eval(model, data, epoch, args):
         #     inat_classnames = to_upper(inat_classnames)
         # elif args.zs_lower:
         #     inat_classnames = to_lower(inat_classnames)
-        logging.info("Starting zero-shot inat2021.")
-        logging.info('Building zero-shot classifier')
-        classifier = zero_shot_classifier(model, inat_classnames, inat_template, args)
-
-        logging.info('Using classifier')
+        
+        isint = (args.integer_labels or args.linear_probe)
+        # usecaps = args.caption_subset and not isint
+        if isint:
+            args.classnames = inat_classnames
+            classifier = None
+            # return classifier
+        else:
+            logging.info('Building zero-shot classifier')
+            classifier = zero_shot_classifier(model, inat_classnames, inat_template, args)
+        # classifier = None
+            logging.info('Using classifier')
         top1, top5 = run(model, classifier, data['inat2021'].dataloader, args)
         results['inat2021-top1'] = top1
         results['inat2021-top5'] = top5
