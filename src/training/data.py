@@ -133,11 +133,13 @@ def token_strip_func(texts):
     texts = torch.tensor(tlist)
     return texts
 
-def clean_integer_label(label, singleclass, strict):
+def clean_integer_label(label, singleclass, strict, ds):
+    if ds is None:
+        ds = [0]*1000
     if isinstance(label, float):
         label = int(label)
     if isinstance(label, int):
-        if label < 0 or label > 999:
+        if label < 0 or label > len(ds) - 1:
             logging.info("Integer label {} out of acceptable range, mapping to 0".format(label))
             label = 0
         if singleclass:
@@ -153,7 +155,7 @@ def clean_integer_label(label, singleclass, strict):
             label_updated = []
             for l in label:
                 intl = int(l)
-                if intl < 0 or intl > 999:
+                if intl < 0 or intl > len(ds) - 1:
                     logging.info("Integer label {} out of acceptable range, mapping to 0".format(intl))
                     label_updated.append(0)
                 else:
@@ -209,13 +211,13 @@ class CsvDataset(Dataset):
             df = df[df['title'].str.len() > 0]
             logging.debug("Done. Length is now {}".format(len(df)))
             logging.debug(df.head())            
-        elif csvfilter != "":
-            logging.debug('Filtering captions. Original dataset size is {}'.format(len(df)))
-            df['is_synset'] = df[caption_key].progress_apply(synset_ds, ngram=3, ds=csvfilter, cipher=False, simplecaptions=False, strict=strict, shift=shift, metacaptions=metacaptions)
-            logging.debug(df['is_synset'].head())
-            df = df[df['is_synset']].drop(columns=['is_synset'])
-            logging.debug("Done. Length is now {}".format(len(df)))
-            logging.debug(df.head())
+        # elif csvfilter != "":
+        #     logging.debug('Filtering captions. Original dataset size is {}'.format(len(df)))
+        #     df['is_synset'] = df[caption_key].progress_apply(synset_ds, ngram=10, ds=csvfilter, cipher=False, simplecaptions=False, strict=strict, shift=shift, metacaptions=metacaptions)
+        #     logging.debug(df['is_synset'].head())
+        #     df = df[df['is_synset']].drop(columns=['is_synset'])
+        #     logging.debug("Done. Length is now {}".format(len(df)))
+        #     logging.debug(df.head())
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
         self.transforms = transforms
@@ -255,7 +257,7 @@ class CsvDataset(Dataset):
             #if isinstance(texts, str) and not texts.is_numeric():
                 #assert(False, "Integer labels cannot be computed on the fly for a CSV dataset")
                 #texts = [synset_ds(clean_captions(str(texts)), 3, self.csvfilter, False, False, self.strict, False, True, None) for t in texts]
-            texts = clean_integer_label(self.captions[idx], not self.multiclass, self.strict)
+            texts = clean_integer_label(self.captions[idx], not self.multiclass, self.strict, self.csvfilter)
             return images, texts
         if self.scrambled:
             texts = scramble_txt(texts)
@@ -346,10 +348,10 @@ def preprocess_txt(text, token_scrambled, token_strip):
 def filter_preprocess_txt(text, ds, scrambled, dscipher, simplecaptions, strict, shift, integer_labels, multiclass, metacaptions):
     if bool(ds):
         if integer_labels:
-            text = clean_captions(str(text))
-            text = synset_ds(text, 3, ds, False, False, strict, False, integer_labels, metacaptions)
+            text = clean_captions(str(text)) # just does lower case
+            text = synset_ds(text, 3, ds, False, False, strict, False, integer_labels, metacaptions) # It should return an integer
             if text:
-                text = clean_integer_label(text, not multiclass, strict)
+                text = clean_integer_label(text, not multiclass, strict, ds)
             else:
                 text = ""
         else:
@@ -396,7 +398,7 @@ nva uses parts of speech for all of wordnet, instead of matching on some list fr
 WARNING: can return string or bool, depending on arguments provided
 """
 
-def synset_ds(s, ngram=3, ds=None, cipher=False, simplecaptions=False, strict=False, shift=None, integer_labels=False, metacaptions=None):
+def synset_ds(s, ngram=5, ds=None, cipher=False, simplecaptions=False, strict=False, shift=None, integer_labels=False, metacaptions=None):
     flag = False
     s = list(lemmatizer.lemmatize(t) for t in s.split(" "))
     str_s = " ".join(w for w in s)
@@ -460,7 +462,7 @@ def synset_ds(s, ngram=3, ds=None, cipher=False, simplecaptions=False, strict=Fa
                 elif d and str_s.find(gram) == -1:
                     str_s += " {}".format(gram)         
                 flag=True
-    
+
     if len(str_s) > 76:
         str_s = str_s[:75]
     
@@ -472,7 +474,7 @@ def synset_ds(s, ngram=3, ds=None, cipher=False, simplecaptions=False, strict=Fa
     elif shift:
         str_s = shift_cipher(str_s, shift)
         return str_s
-
+        
     return flag
 
 def get_dataset_size(shards):
@@ -909,7 +911,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, total=
         dataset = dataset.with_epoch(num_worker_batches)  # each worker is iterating over this
     else:
         # last batches are partial, eval is done on single (master) node
-        num_batches = math.ceil(num_samples / args.batch_size)     
+        num_batches = math.ceil(num_samples / args.batch_size)
     dataloader = wds.WebLoader(
         dataset,
         batch_size=None,

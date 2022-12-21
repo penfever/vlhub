@@ -1,4 +1,9 @@
 import pandas as pd
+import ast
+from pathlib import Path
+import nltk
+from clean_filter_captions import ds_val_getter, clean_captions
+lemmatizer = nltk.stem.WordNetLemmatizer()
 
 try:
     METPATH = "./metadata/inat2021-categories.csv"
@@ -8,7 +13,6 @@ except:
     df = pd.read_csv(METPATH)
 
 inat_classnames = df['label'].tolist()
-
 inat_template = [
     lambda c: f'a bad photo of a {c}.',
     lambda c: f'a photo of many {c}.',

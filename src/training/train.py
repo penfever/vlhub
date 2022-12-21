@@ -170,9 +170,7 @@ def train_one_epoch(model, data, epoch, optimizer, scaler, scheduler, args, tb_w
 
     #MAIN TRAINING LOOP
     for i, batch in enumerate(dataloader):
-
         #HOUSEKEEPING
-        # if args.ds_filter and args.debug:
         #     for b in batch[1].tolist():
         #         if b not in batchset:
         #             batchset.append(b)
@@ -181,7 +179,6 @@ def train_one_epoch(model, data, epoch, optimizer, scaler, scheduler, args, tb_w
         step = num_batches_per_epoch * epoch + i
         scheduler(step)
         images, texts = batch
-        #logging.info(texts)
         texts = texts.to(device=device, non_blocking=True)
         images = images.to(device=device, non_blocking=True)
         data_time_m.update(time.time() - end)
