@@ -174,10 +174,10 @@ def main():
             unlocked_groups=args.lock_image_unlocked_groups,
             freeze_bn_stats=args.lock_image_freeze_bn_stats)
 
-    # if args.lock_text and not args.alt:
-    #     # lock text tower as per LiT - https://arxiv.org/abs/2111.07991
-    #     model.lock_text_tower(
-    #         unlocked_groups=args.lock_image_unlocked_groups)
+    if args.lock_text and not args.alt:
+        # lock text tower as per LiT - https://arxiv.org/abs/2111.07991
+        model.lock_text_tower(
+            unlocked_groups=args.lock_image_unlocked_groups)
 
     if args.grad_checkpointing:
         model.set_grad_checkpointing()
