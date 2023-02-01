@@ -259,7 +259,7 @@ def create_model(
                 assert False, 'pretrained image towers currently only supported for timm models'
 
         model = CLIP(**model_cfg)
-
+        
         pretrained_cfg = {}
         if pretrained:
             checkpoint_path = ''
