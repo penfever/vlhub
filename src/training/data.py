@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from multiprocessing import Value
 from functools import partial
+import pdb
 
 import numpy as np
 import braceexpand
@@ -272,6 +273,12 @@ class CsvDataset(Dataset):
             except:
                 raise Exception("Could not read csv file")
         logging.info("Size of dataframe is {}".format(len(df)))
+        if "taxon!" in args['caption_key'] or "preproc!" in args['caption_key']:
+            logging.info(f"Caption key is {args['caption_key']}, attempting to generate ground truth column")
+            taxon_str = args['caption_key'].split("!")[-1]
+            possible_values = {tax_str : int(i) for i, tax_str in enumerate(df[taxon_str].unique())}
+            df["idx_key"] = df[taxon_str].apply(lambda x: possible_values[x])
+            args['caption_key'] = "idx_key"
         df = df[["path", args['caption_key']]]
         df = df.dropna()
         df = df[df[args['caption_key']].notnull()]
@@ -294,9 +301,11 @@ class CsvDataset(Dataset):
         logging.info("Size of dataframe after NaN-removal is {}".format(len(df)))
         logging.debug("Columns of dataframe: {}".format(df.columns))
         self.df = df
+        self.caption_key = args['caption_key']
 
     def __init__(self, input_filename, transforms, img_key, caption_key, csvfilter, csvscrambled, tokenscrambled, csvcleaned, dscipher, simplecaptions, strict, shift, integer_labels, multiclass, metacaptions, token_strip, sep="\t", args=None):
         self.read_and_preprocess(locals())
+        caption_key = self.caption_key
         df = self.df
         if dscipher:
             csvcleaned=True
@@ -644,6 +653,53 @@ def get_objectnet(args, preprocess_fns):
 def get_insecta(args, preprocess_fns):
     _, preprocess_val = preprocess_fns
     dataset = datasets.ImageFolder(args.insecta, transform=preprocess_val)
+    dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            num_workers=args.workers,
+            sampler=None
+        )
+    return DataInfo(dataloader=dataloader, sampler=None)
+
+def get_csv_test(args, preprocess_fns, target_ds):
+    _, preprocess_val = preprocess_fns
+    if target_ds == "arbor-rare":
+        target_ds_path = "./metadata/arboretum_rare_combined_metadata.csv"
+        capkey = "taxon!" + args.taxon
+    elif target_ds == "arbor-test":
+        target_ds_path = "./metadata/arboretum_test_metadata.csv"
+        capkey = "taxon!" + args.taxon
+    elif target_ds == "bioclip-rare":
+        target_ds_path = "./metadata/bioclip_rare_metadata_n.csv"
+        capkey = "taxon!" + args.taxon
+    elif target_ds == "fungi":
+        target_ds_path = "./metadata/fungi_metadata_n.csv"
+        capkey = "preproc!class"
+    elif target_ds == "insects2":
+        target_ds_path = "./metadata/ins2_metadata_n.csv"
+        capkey = "preproc!class"
+    elif target_ds == "confounding":
+        target_ds_path = "./metadata/confounding_species.csv"
+        capkey = "preproc!scientific_name"
+    dataset = CsvDataset(
+            target_ds_path,
+            preprocess_val,
+            img_key="path",
+            caption_key=capkey,
+            csvfilter=args.ds_filter,
+            csvscrambled=args.csv_scrambled,
+            tokenscrambled=args.token_scrambled,
+            token_strip=args.token_strip,
+            csvcleaned=args.csv_cleaned,
+            dscipher=args.ds_cipher,
+            simplecaptions=args.simplecaptions,
+            strict=args.strict,
+            shift=args.shift_cipher,
+            integer_labels=True,
+            multiclass=args.multiclass,
+            metacaptions=args.metacaptions,
+            sep=",",
+            args=args)
     dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=args.batch_size,
@@ -1396,6 +1452,69 @@ def get_dataset_fn(data_path, dataset_type):
     else:
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
     
+class BirdDataset(Dataset):
+
+    def __init__(self,args,transform=None):
+        self.base_bird_dir = args.birds
+        csv = os.path.join(self.base_bird_dir, "birds.csv")
+        self.df = pd.read_csv(csv)
+        self.labels = []
+        self.image_paths = []
+        self.transform = transform
+        
+        class_names = [x for x in self.df['labels'].unique() if 'PARKETT  AKULET' not in x]
+        args.classnames = class_names
+        labels2idx = {class_name: idx for idx, class_name in enumerate(class_names)}
+
+        seen_labels = set()
+        labels = []
+        for idx in range(len(self.df)):
+            filepath = os.path.join(self.base_bird_dir,self.df['filepaths'][idx])
+            if 'PARAKETT  AKULET' in self.df['labels'][idx]:
+                continue
+            
+            self.image_paths.append(filepath)
+            self.labels.append(labels2idx[self.df['labels'][idx]])
+
+        print('done')
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        try:
+            image_path = self.image_paths[idx]
+        except:
+            print("Error in image path")
+            print(idx)
+        image = Image.open(image_path)
+        transformed_image = self.transform(image)
+        label = self.labels[idx]
+        # convert to float
+        # image_array = image_array.astype(np.float32)
+        return transformed_image, label
+
+
+def get_birds_data(args, preprocess_fn):
+    dataset = BirdDataset(args,preprocess_fn)
+    num_samples = len(dataset)
+    sampler = DistributedSampler(dataset) if args.distributed  else None
+    shuffle = False
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=shuffle,
+        num_workers=args.workers,
+        pin_memory=True,
+        sampler=sampler,
+        drop_last=False,
+    )
+    dataloader.num_samples = num_samples
+    dataloader.num_batches = len(dataloader)
+
+    data_info = DataInfo(dataloader, sampler)
+    return data_info
 
 def get_data(args, preprocess_fns, epoch=0):
     preprocess_train, preprocess_val = preprocess_fns
@@ -1412,6 +1531,8 @@ def get_data(args, preprocess_fns, epoch=0):
     elif args.ds_filter != "":
         if args.ds_filter == "imagenet_classnames":
             args.ds_filter = get_imagenet_classnames(no_overlap=False)
+        elif args.ds_filter =="birds":
+            data["birds"] = get_birds_data(args,preprocess_val)
         elif args.ds_filter == "imagenet_classnames_no_overlap":
             args.no_overlap=True
             args.ds_filter = get_imagenet_classnames(no_overlap=True)
@@ -1488,6 +1609,24 @@ def get_data(args, preprocess_fns, epoch=0):
 
     if args.objectnet is not None:
         data["objectnet"] = get_objectnet(args, preprocess_fns)
+
+    if args.arbor_rare:
+        data["arbor-rare"] = get_csv_test(args, preprocess_fns, "arbor-rare")
+    
+    if args.arbor_val:
+        data["arbor-test"] = get_csv_test(args, preprocess_fns, "arbor-test")
+    
+    if args.bioclip_rare:
+        data["bioclip-rare"] = get_csv_test(args, preprocess_fns, "bioclip-rare")
+    
+    if args.fungi:
+        data["fungi"] = get_csv_test(args, preprocess_fns, "fungi")
+    
+    if args.insects2:
+        data["insects2"] = get_csv_test(args, preprocess_fns, "insects2")
+
+    if args.confounding:
+        data["confounding"] = get_csv_test(args, preprocess_fns, "confounding")
 
     if args.insecta is not None:
         data["insecta"] = get_insecta(args, preprocess_fns)

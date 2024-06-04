@@ -18,6 +18,7 @@ from .distributed import is_master
 from .zero_shot import zero_shot_eval
 from .data import get_total_obj
 from .precision import get_autocast
+from evals.easyrobust_eval import easyrobust_eval
 
 from grad_cache_vl.grad_cache import GradCache
 
@@ -365,7 +366,9 @@ def evaluate(model, data, epoch, args, tb_writer=None):
         return metrics
     device = torch.device(args.device)
     model.eval()
-
+    if args.easyrobust_eval:
+        easyrobust_metrics = easyrobust_eval(model, args)
+        metrics.update(easyrobust_metrics)
     zero_shot_metrics = zero_shot_eval(model, data, epoch, args)
     metrics.update(zero_shot_metrics)
 

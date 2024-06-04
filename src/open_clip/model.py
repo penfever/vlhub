@@ -587,28 +587,38 @@ class CLIP(nn.Module):
         return image_features, text_features, self.logit_scale.exp()
 
 
-def convert_weights_to_fp16(model: nn.Module):
-    """Convert applicable model parameters to fp16"""
+def convert_weights_to_lp(model: nn.Module, dtype=torch.float16):
+    """Convert applicable model parameters to low-precision (bf16 or fp16)"""
 
-    def _convert_weights_to_fp16(l):
+    def _convert_weights(l):
         if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-            l.weight.data = l.weight.data.half()
+            l.weight.data = l.weight.data.to(dtype)
             if l.bias is not None:
-                l.bias.data = l.bias.data.half()
+                l.bias.data = l.bias.data.to(dtype)
 
         if isinstance(l, (nn.MultiheadAttention, Attention)):
             for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
                 tensor = getattr(l, attr)
                 if tensor is not None:
-                    tensor.data = tensor.data.half()
+                    tensor.data = tensor.data.to(dtype)
 
         for name in ["text_projection", "proj"]:
             if hasattr(l, name):
                 attr = getattr(l, name)
                 if attr is not None:
-                    attr.data = attr.data.half()
+                    attr.data = attr.data.to(dtype)
 
-    model.apply(_convert_weights_to_fp16)
+    model.apply(_convert_weights)
+
+convert_weights_to_fp16 = convert_weights_to_lp  # backwards compat
+
+def get_cast_dtype(precision: str):
+    cast_dtype = None
+    if precision == 'bf16':
+        cast_dtype = torch.bfloat16
+    elif precision == 'fp16':
+        cast_dtype = torch.float16
+    return cast_dtype
 
 class VisionModel(nn.Module):
     def __init__(

@@ -214,16 +214,19 @@ def get_obj_index():
 def get_obj_index_zeroindexed():
     return np.arange(0, len(obj_idx), dtype=int)
 
-#./metadata/in100_rand_idx_{01 .. 09}.txt for a random 100-class index that is NOT in100 overlapping
-#./metadata/in100_true_idx.txt for the in100 index
-try:
-    ICAP_F = Path("./metadata/in100_true_idx.txt")
-    with open( ICAP_F, 'r' ) as file:
-        icap_idx = ast.literal_eval( file.read( ) )
-except:
-    ICAP_F = Path("/scratch/bf996/vlhub/metadata/in100_true_idx.txt")
-    with open( ICAP_F, 'r' ) as file:
-        icap_idx = ast.literal_eval( file.read( ) )
+def get_icap_idx():
+    try:
+        ICAP_F = Path("./metadata/in100_true_idx.txt")
+        with open( ICAP_F, 'r' ) as file:
+            icap_idx = ast.literal_eval( file.read( ) )
+    except:
+        ICAP_F = Path("/scratch/bf996/vlhub/metadata/in100_true_idx.txt")
+        with open( ICAP_F, 'r' ) as file:
+            icap_idx = ast.literal_eval( file.read( ) )
+    return np.array(icap_idx)
+
+global icap_idx 
+globals()[f'icap_idx'] = get_icap_idx()
 
 try:
     IN100_DOGS = Path("./metadata/in100_dogs.txt")
@@ -234,50 +237,37 @@ except:
     with open( IN100_DOGS, 'r' ) as file:
         dogs_idx = ast.literal_eval( file.read( ) )
     
-try:
-    IN100_RANDOM_01 = Path("./metadata/in100_rand_idx_01.txt")
-    with open ( IN100_RANDOM_01, 'r' ) as file:
-        in100_random_01_idx = ast.literal_eval( file.read( ) )
-except:
-    IN100_RANDOM_01 = Path("/scratch/bf996/vlhub/metadata/in100_rand_idx_01.txt")
-    with open ( IN100_RANDOM_01, 'r' ) as file:
-        in100_random_01_idx = ast.literal_eval( file.read( ) )
-
-try:
-    IN100_RANDOM_02 = Path("./metadata/in100_rand_idx_02.txt")
-    with open ( IN100_RANDOM_02, 'r' ) as file:
-        in100_random_02_idx = ast.literal_eval( file.read( ) )
-except:
-    IN100_RANDOM_02 = Path("/scratch/bf996/vlhub/metadata/in100_rand_idx_02.txt")
-    with open ( IN100_RANDOM_02, 'r' ) as file:
-        in100_random_02_idx = ast.literal_eval( file.read( ) )
-
-try:
-    IN100_RANDOM_03 = Path("./metadata/in100_rand_idx_03.txt")
-    with open ( IN100_RANDOM_03, 'r' ) as file:
-        in100_random_03_idx = ast.literal_eval( file.read( ) )
-except:
-    IN100_RANDOM_03 = Path("/scratch/bf996/vlhub/metadata/in100_rand_idx_03.txt")
-    with open ( IN100_RANDOM_03, 'r' ) as file:
-        in100_random_03_idx = ast.literal_eval( file.read( ) )
+def get_rand_idx(i):
+    try:
+        var = Path(f"./metadata/in100_rand_idx_0{i}.txt")
+        with open ( var, 'r' ) as file:
+            return ast.literal_eval( file.read( ) )
+    except:
+        var = Path(f"/scratch/bf996/vlhub/metadata/in100_rand_idx_0{i}.txt")
+        with open ( var, 'r' ) as file:
+            return ast.literal_eval( file.read( ) )
 
 def get_icap_idx(target):
-    global icap_idx
     global dogs_idx
-    global in100_random_01_idx
-    global in100_random_02_idx
-    global in100_random_03_idx
+    for i in range(1, 10):
+        globals()[f'in100_random_0{i}_idx'] = get_rand_idx(i)
+    
     icap_idx_rem = None
     if target == "in100":
-        icap_idx_rem = np.array(icap_idx)
+        icap_idx_rem = globals()[f'icap_idx']
     elif target == "in100_dogs":
         icap_idx_rem = np.array(dogs_idx)
-    elif target == "in100_random_01":
-        icap_idx_rem = np.array(in100_random_01_idx)
-    elif target == "in100_random_02":
-        icap_idx_rem = np.array(in100_random_02_idx)
-    elif target == "in100_random_03":
-        icap_idx_rem = np.array(in100_random_03_idx)
+    elif "in100_random" in target:
+        nm = target.split("_")[-1]
+        icap_idx_rem = np.array(globals()[f'in100_random_{nm}_idx'])
+    elif "in10_random" in target:
+        nmb = target.split("_")[-1]
+        nmb_range = np.arange(int(nmb) * 10, int(nmb) * 10 + 10)
+        if "in100_only" in target:
+            icap_idx_rem = np.array(globals()[f'icap_idx'])[nmb_range]
+        else:
+            nma = target.split("_")[-2]
+            icap_idx_rem = np.array(globals()[f'in100_random_{nma}_idx'])[nmb_range]
     else:
         print("no match found")
     icap_idx = icap_idx_rem

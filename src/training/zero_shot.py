@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 import numpy as np
+import pandas as pd
+import pdb 
 
 from open_clip import tokenize
 from .precision import get_autocast
@@ -20,7 +22,7 @@ try:
     from .cars_zeroshot_data import cars_classnames, cars_template
     from .food_zeroshot_data import food_classnames, food_template
     from .air_zeroshot_data import air_classnames, air_template
-    from .insecta_zeroshot_data import get_insecta_classnames
+    from .insecta_zeroshot_data import *
     
 except Exception as e:
     print(e)
@@ -129,7 +131,7 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
         args.prob_size = len(args.classnames)
 
     with torch.no_grad():
-        if split == 'oi' or split == 'real':
+        if split == 'oi' or split == 'real' or split == "confounding":
             if not idx:
                 idx = [i for i in range(len(args.classnames))]
             top1, top5, n = np.array([0. for _ in idx]), np.array([0. for _ in idx]), np.array([0. for _ in idx])
@@ -176,7 +178,10 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                 if images.size(0) == 0:
                     continue
             elif args.caption_subset != "":
-                if args.isint and split == "r":
+                if args.caption_subset == "confounding":
+                    conf_idx = get_confounding_idx(args.classnames).tolist()
+                    match_idx = sum(target==i for i in conf_idx).bool().nonzero(as_tuple=True)[0]
+                elif args.isint and split == "r":
                     ir_idx = get_ir_idx().tolist()
                     match_idx = sum(target==ir_idx.index(i) for i in idx).bool().nonzero(as_tuple=True)[0]
                 elif args.isint and split == "a":
@@ -189,13 +194,18 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                 else:
                     match_idx = sum(target==i for i in idx).bool().nonzero(as_tuple=True)[0]
                 #shave down target and images size so we skip irrelevant samples
-                target = target[match_idx].to(args.device)
+                try:
+                    target = target[match_idx].to(args.device)
+                except:
+                    pdb.set_trace()
                 images = images[match_idx].to(args.device)  
                 if images.size(0) == 0:
                     continue
-                if not args.isint:
-                    idx_l = idx.tolist()
-                    target = torch.tensor([idx_l.index(t) for t in target]).to(args.device)
+                if not args.isint and args.caption_subset != "confounding":
+                    try:
+                        idx_l = idx.tolist()
+                    except:
+                        target = torch.tensor([idx.index(t) for t in target]).to(args.device)
                 elif args.isint and split == "r":
                     ir_idx = get_ir_idx()
                     target = torch.tensor(ir_idx[target.cpu()]).to(args.device)
@@ -267,7 +277,6 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                         image_features = model.encode_image(images)
                         image_features = F.normalize(image_features, dim=-1)
                         logits = 100. * image_features @ classifier
-            
             # remap model indices
             if args.isint and \
             not "miil" in args.model and \
@@ -292,7 +301,10 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                 logits = logits[:, :args.prob_size]
 
             # measure accuracy with adjustments
-            if args.isint:
+            if args.caption_subset == "confounding":
+                not_conf_idx = [i for i in range(args.prob_size) if i not in conf_idx]
+                logits[:, not_conf_idx] = float("-inf")
+            elif args.isint:
                 #zero out logits which are not being evaluated (in VL this is handled by changing the size of the classification problem)
                 if args.caption_subset != "":
                     if args.caption_subset == "insects":
@@ -470,16 +482,86 @@ def zero_shot_eval(model, data, epoch, args):
     results = {}
     classifier = None
 
-    if 'imagenet-val' not in data and 'imagenet-v2' not in data and 'imagenet-r' not in data and 'imagenet-s' not in data and 'imagenet-a' not in data and 'inat2021' not in data and 'stanfordcars' not in data and 'flowers' not in data and 'food' not in data and 'objectnet' not in data and 'insecta' not in data and 'openimages-val' not in data and 'imagenet-real' not in data:
-        return results
+    # if 'imagenet-val' not in data and 'imagenet-v2' not in data and 'imagenet-r' not in data and 'imagenet-s' not in data and 'imagenet-a' not in data and 'inat2021' not in data and 'stanfordcars' not in data and 'flowers' not in data and 'food' not in data and 'objectnet' not in data and 'insecta' not in data and 'openimages-val' not in data and 'imagenet-real' not in data:
+    #     return results
     if args.zeroshot_frequency == 0:
         return results
     if (epoch % args.zeroshot_frequency) != 0 and epoch != args.epochs:
         return results
-
+    if 'birds' in data:
+        bird_template = [lambda c: c]
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['birds'].dataloader, args)
+        logging.info('Finished zero-shot Birds-525 for model {}.\n Top1 was {}, top5 was {}'.format(args.pretrained,top1, top5))
+        import sys; sys.exit()
+    if 'arbor-rare' in data:
+        logging.info("Starting zero-shot arbor-rare.")
+        args.classnames = get_arboretum_rare_classes(args.taxon)
+        args.prob_size = len(args.classnames)
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['arbor-rare'].dataloader, args)
+        results['arbor-rare-top1'] = top1
+        results['arbor-rare-top5'] = top5
+        logging.info('Finished zero-shot arbor-rare. Top1 was {}, top5 was {}'.format(top1, top5))
+    if 'arbor-test' in data:
+        logging.info("Starting zero-shot arbor-test.")
+        args.classnames = get_arboretum_test_classes(args.taxon)
+        args.prob_size = len(args.classnames)
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['arbor-test'].dataloader, args)
+        results['arbor-test-top1'] = top1
+        results['arbor-test-top5'] = top5
+        logging.info('Finished zero-shot arbor-test. Top1 was {}, top5 was {}'.format(top1, top5))
+    if 'bioclip-rare' in data:
+        logging.info("Starting zero-shot bioclip-rare.")
+        args.classnames = get_bioclip_rare_classes(args.taxon)
+        args.prob_size = len(args.classnames)
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['bioclip-rare'].dataloader, args)
+        results['bioclip-rare-top1'] = top1
+        results['bioclip-rare-top5'] = top5
+        logging.info('Finished zero-shot bioclip-rare. Top1 was {}, top5 was {}'.format(top1, top5))
+    if 'fungi' in data:
+        logging.info("Starting zero-shot fungi.")
+        args.classnames = get_fungi_classes()
+        args.prob_size = len(args.classnames)
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['fungi'].dataloader, args)
+        results['fungi-top1'] = top1
+        results['fungi-top5'] = top5
+        logging.info('Finished zero-shot fungi. Top1 was {}, top5 was {}'.format(top1, top5))
+    if 'insects2' in data:
+        logging.info("Starting zero-shot insects2.")
+        args.classnames = get_ins2_classes()
+        args.prob_size = len(args.classnames)
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        top1, top5 = run(model, classifier, data['insects2'].dataloader, args)
+        results['insects2-top1'] = top1
+        results['insects2-top5'] = top5
+        logging.info('Finished zero-shot insects2. Top1 was {}, top5 was {}'.format(top1, top5))
+    if 'confounding' in data:
+        logging.info("Starting zero-shot confounding.")
+        all_pairs = get_confounding_pairs()
+        top1s, top5s = [], []
+        args.classnames = all_pairs[0] + all_pairs[1] + all_pairs[2] + all_pairs[3] + all_pairs[4]
+        classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
+        args.caption_subset = "confounding"
+        args.prob_size = 10
+        for cn in all_pairs:
+            args.classnames = cn
+            top1, top5 = run(model, classifier, data['confounding'].dataloader, args, split="confounding")
+            top1s.append(top1)
+            top5s.append(top5)
+        top1 = np.mean(top1s)
+        top5 = np.mean(top5s)
+        results['confounding-top1'] = top1
+        results['confounding-top5'] = top5
+        logging.info('Finished zero-shot confounding. Top1 was {}, top5 was {}'.format(top1, top5))
     if 'inat2021' in data:
         isint = (args.integer_labels or args.linear_probe)
         usecaps = args.caption_subset and not isint
+        args.caption_subset=""
+        args.classnames = inat_classnames
         if args.caption_subset != "":
             if args.caption_subset == "insects":
                 args.classnames = inat_insects_classnames
@@ -491,7 +573,12 @@ def zero_shot_eval(model, data, epoch, args):
             classifier = None
         else:
             logging.info('Building zero-shot classifier')
-            classifier = zero_shot_classifier(model, args.classnames, inat_template, args, args.capsub_idx)
+            # categories_df = pd.read_csv("~/ag_clip/inat2021-categories.csv")
+            # names = ("common_name","supercategory","kingdom","phylum","class","order","family","genus","specific_epithet")
+            # classnames = [" ".join(categories_df[name][i] for name in names) for i in range(len(categories_df))]
+            # pdb.set_trace()
+            # classnames = os.listdir(args.inat2021)
+            classifier = zero_shot_classifier(model, args.classnames, inat_template, args)
             logging.info('Using classifier')
         logging.info('Using classifier')
         top1, top5 = run(model, classifier, data['inat2021'].dataloader, args)
@@ -557,7 +644,8 @@ def zero_shot_eval(model, data, epoch, args):
             logging.info('Finished zero-shot insecta. Top1 was {}, top5 was {}'.format(top1, top5))
 
     logging.info('Starting zero-shot imagenet.')
-    if args.caption_subset != "":
+    doing_imagenet = any([x in data for x in ['imagenet-val', 'imagenet-v2', 'imagenet-r', 'imagenet-s', 'imagenet-a', 'imagenet-real']])
+    if doing_imagenet and args.caption_subset != "":
         logging.info("Using caption subset {}".format(args.caption_subset))
         get_icap_idx(args.caption_subset)
         get_common_ir_idx()

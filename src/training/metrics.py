@@ -63,7 +63,7 @@ def log_confusion_matrix(args, output, labels):
     # print("output before")
     # print(output)
     # print(output.size())
-    output = output.topk(max((1, 5)), 1, True, True)
+    output = output.topk(max((1, min(5, len(args.classnames)))), 1, True, True)
     # print("output after topk")
     output = output[1].t()[0].data.cpu()
     output = np.array(output, ndmin=1)  
@@ -121,14 +121,16 @@ def write_confusion_matrix(args, output, labels, classes):
     if font_size < 0.1:
         font_size = 0.1
     sn.set(font_scale=font_size)
-    #if len(classes) < 201:
-    start = time.time()
-    print("Saving confusion matrix: this might take a while...")
-    plt.figure(figsize = (168,80), dpi=200)
-    sn.heatmap(df_cm, annot=True)
-    plt.savefig(os.path.join(args.conf_path, "confusion_matrix_{}.svg".format(res)), format='svg', dpi=200)        
-    plt.close('all')
-    print("Saving confusion matrix: done in {} seconds".format(time.time() - start))
+    if len(classes) < 201:
+        start = time.time()
+        logging.info("Saving confusion matrix: this might take a while...")
+        plt.figure(figsize = (168,80), dpi=200)
+        sn.heatmap(df_cm, annot=True)
+        plt.savefig(os.path.join(args.conf_path, "confusion_matrix_{}.svg".format(res)), format='svg', dpi=200)        
+        plt.close('all')
+        logging.info("Saving confusion matrix: done in {} seconds".format(time.time() - start))
+    else:
+        logging.warning("Confusion matrix not saved: more than 200 classes (you can disable this if you like)")
     #class-class clustering matrix
     logging.info('Saving class-class clustering matrix')
     logit_concat = np.concatenate(args.logits, axis=0)
@@ -140,5 +142,3 @@ def write_confusion_matrix(args, output, labels, classes):
     except Exception as e:
         logging.warning("Clustering matrix did not save")
         logging.warning(e)
-
-

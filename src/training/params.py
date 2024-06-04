@@ -223,6 +223,24 @@ def parse_args():
         help="Path to objectnet for conducting zero shot evaluation.",
     )
     parser.add_argument(
+        "--imagenet_c",
+        type=str,
+        default=None,
+        help="Path to imagenet_c for conducting zero shot evaluation.",
+    )
+    parser.add_argument(
+        "--stylized_imagenet",
+        type=str,
+        default=None,
+        help="Path to stylized imagenet for conducting zero shot evaluation.",
+    )
+    parser.add_argument(
+        "--easyrobust_eval",
+        action="store_true",
+        default=False,
+        help="Conduct easyrobust evaluation (ImageNet-C, Stylized, ObjectNet).",
+    )
+    parser.add_argument(
         "--insecta",
         type=str,
         default=None,
@@ -392,7 +410,7 @@ def parse_args():
     )
     parser.add_argument(
         "--precision",
-        choices=["amp", "amp_bfloat16", "fp16", "fp32"],
+        choices=["amp", "amp_bf16", "amp_bfloat16", "bf16", "fp16", "fp32"],
         default="amp",
         help="Floating point precision."
     )
@@ -705,6 +723,33 @@ def parse_args():
     )
     parser.add_argument(
         "--timm_classifier_head_size", type=int, default=-1, help="Size of the classifier head in timm models."
+    )
+    parser.add_argument(
+        "--birds", type=str, default=None, help="Data directory for Birds-525 eval set"
+    )
+    parser.add_argument(
+        "--arbor-rare", action="store_true", help="Run ArborCLIP rare species eval"
+    )
+    parser.add_argument(
+        "--arbor-val", action="store_true", help="Run ArborCLIP test set"
+    )
+    parser.add_argument(
+        "--bioclip-rare", action="store_true", help="Run BioCLIP rare species test set"
+    )
+    parser.add_argument(
+        "--fungi", action="store_true", help="Run fungi test set"
+    )
+    parser.add_argument(
+        "--insects2", action="store_true", help="Run insects2 test set"
+    )
+    parser.add_argument(
+        "--confounding", action="store_true", help="Run confounding test set"
+    )
+    parser.add_argument(
+        "--taxon", type=str, default="kingdom", help="Taxon hierarchy level", choices=["kingdom", "phylum", "class", "order", "family", "genus", "species", "scientific_name", "common_name"]
+    )
+    parser.add_argument(
+        "--tokenizer_path", type=str, default=None, help="Path to tokenizer."
     )
     args = parser.parse_args()
 

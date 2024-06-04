@@ -11,6 +11,7 @@ from pathlib import Path
 
 from torch import optim
 from torch.cuda.amp import GradScaler
+import torch.backends.cudnn as cudnn
 
 try:
     import wandb
@@ -61,6 +62,7 @@ def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
     np.random.seed(seed + rank)
     random.seed(seed + rank)
+    cudnn.benchmark = True
 
 def yaml_setup():
     _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
@@ -301,7 +303,11 @@ def run_main(args = None):
                 sd = checkpoint["state_dict"]
             except KeyError:
                 #torchvision labeling
-                sd = checkpoint["model"]
+                try:
+                    sd = checkpoint["model"]
+                except KeyError:
+                    #bioclip/hf labeling
+                    sd = checkpoint
             if args.add_trunk:
                 keys = list(sd.keys())
                 keys_mod = list()
