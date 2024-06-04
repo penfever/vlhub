@@ -16,6 +16,7 @@ from .model import CLIP, VisionModel, convert_weights_to_fp16, resize_pos_embed,
 from .openai import load_openai_model
 from .pretrained import get_pretrained_cfg, download_pretrained
 from .transform import image_transform
+from .tokenizer import DEFAULT_CONTEXT_LENGTH, SimpleTokenizer
 
 try:
     from coca_pytorch.coca_pytorch import CoCa
@@ -37,8 +38,10 @@ except ImportError as e:
     print(e)
     logging.debug("timm is not installed")
 
+HF_HUB_PREFIX = 'hf-hub:'
 _MODEL_CONFIG_PATHS = [Path(__file__).parent / f"model_configs/"]
 _MODEL_CONFIGS = {}  # directory (model_name: config) of model architecture configs
+
 
 class View(nn.Module):
     def __init__(self, shape):
@@ -98,11 +101,19 @@ def load_state_dict(checkpoint_path: str, map_location='cpu'):
     return state_dict
 
 
-def load_checkpoint(model, checkpoint_path, strict=True):
+def load_checkpoint(model, checkpoint_path, strict=False):
     print(f"Loading checkpoint from {checkpoint_path}")
     state_dict = load_state_dict(checkpoint_path)
     resize_pos_embed(state_dict, model)
-    incompatible_keys = model.load_state_dict(state_dict, strict=strict)
+    try:
+        incompatible_keys = model.load_state_dict(state_dict, strict=strict)
+    except:
+        for k in list(state_dict.keys()):
+            state_dict["visual.trunk."+k] = state_dict[k]
+            del state_dict[k]
+        incompatible_keys = model.load_state_dict(state_dict, strict=strict)
+    if len(incompatible_keys.missing_keys) > 0:
+        logging.warning(f"Missing keys: {incompatible_keys.missing_keys}")
     return incompatible_keys
 
 #Changed from Sync
@@ -117,6 +128,55 @@ def build_mlp(in_dim, mlp_dim, out_dim):
         ("relu2", nn.ReLU(inplace=True)),
         ("layer3", nn.Linear(mlp_dim, out_dim)),
     ]))
+
+def get_model_config(model_name):
+    if model_name in _MODEL_CONFIGS:
+        return deepcopy(_MODEL_CONFIGS[model_name])
+    else:
+        return None
+
+def get_tokenizer(
+        model_name: str = '',
+        context_length: Optional[int] = None,
+        **kwargs,
+):
+    if model_name.startswith(HF_HUB_PREFIX):
+        model_name = model_name[len(HF_HUB_PREFIX):]
+        try:
+            config = _get_hf_config(model_name)['model_cfg']
+        except Exception:
+            tokenizer = HFTokenizer(
+                model_name,
+                context_length=context_length or DEFAULT_CONTEXT_LENGTH,
+                **kwargs,
+            )
+            return tokenizer
+    else:
+        config = get_model_config(model_name)
+        assert config is not None, f"No valid model config found for {model_name}."
+
+    text_config = config.get('text_cfg', {})
+    if 'tokenizer_kwargs' in text_config:
+        tokenizer_kwargs = dict(text_config['tokenizer_kwargs'], **kwargs)
+    else:
+        tokenizer_kwargs = kwargs
+
+    if context_length is None:
+        context_length = text_config.get('context_length', DEFAULT_CONTEXT_LENGTH)
+
+    if 'hf_tokenizer_name' in text_config:
+        tokenizer = HFTokenizer(
+            text_config['hf_tokenizer_name'],
+            context_length=context_length,
+            **tokenizer_kwargs,
+        )
+    else:
+        tokenizer = SimpleTokenizer(
+            context_length=context_length,
+            **tokenizer_kwargs,
+        )
+
+    return tokenizer
 
 def create_model(
         model_name: str,
@@ -286,23 +346,8 @@ def create_model(
 
             if checkpoint_path:
                 logging.info(f'Loading pretrained {model_name} weights ({pretrained}).')
-                # try:
                 load_checkpoint(model, checkpoint_path)
-                # except:
-                #     enc = timm.create_model("vit_base_patch16_224", num_classes=0).to(device=device)
-                #     #TODO: check these settings
-                #     mlp = build_mlp(in_dim=768, mlp_dim=2048, out_dim=1000).to(device=device)
-                #     model.visual = SIMCLR(
-                #         vision_width = 768,
-                #         vision_model = enc,
-                #         build_mlp = mlp
-                #     )
-                #     checkpoint = torch.load(pretrained, map_location=device)
-                #     sd = checkpoint["state_dict"]
-                #     if next(iter(sd.items()))[0].startswith('module'):
-                #         sd = {k[len('module.'):]: v for k, v in sd.items()}
-                #     model.visual.load_state_dict(sd)
-                #     model.visual = model.visual.visual
+                
             else:
                 logging.warning(f'Pretrained weights ({pretrained}) not found for model {model_name}.')
                 raise RuntimeError(f'Pretrained weights ({pretrained}) not found for model {model_name}.')        

@@ -10,6 +10,7 @@ src/script/
 debug/
 config/
 JANuS_runs/
+vlhub_checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

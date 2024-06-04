@@ -11,16 +11,19 @@ from pathlib import Path
 
 from torch import optim
 from torch.cuda.amp import GradScaler
+import torch.backends.cudnn as cudnn
 
 try:
     import wandb
 except ImportError:
     wandb = None
 
-try:
-    import torch.utils.tensorboard as tensorboard
-except ImportError:
-    tensorboard = None
+# try:
+#     import torch.utils.tensorboard as tensorboard
+# except ImportError:
+#     tensorboard = None
+
+tensorboard = None
 
 try:
     import horovod.torch as hvd
@@ -36,7 +39,7 @@ except ImportError:
 
 from open_clip.model import TimmModel
 from open_clip import create_model_and_transforms, trace_model
-from open_clip.factory import apply_random_weights_skipping_first_k_layers_vit
+from open_clip.factory import apply_random_weights_skipping_first_k_layers_vit, load_checkpoint
 from open_clip.transform import image_transform
 from training.data import get_data
 from training.model_data import noisystudent_loader, efficientnet_loader
@@ -46,6 +49,7 @@ from training.params import parse_args
 from training.scheduler import cosine_lr
 from training.train import train_one_epoch, evaluate, unwrap_model
 from training.lsuv import LSUV_
+from evals.datacomp_eval import datacomp_eval
 from gsam import CosineScheduler, GSAM
 
 def dict_representer(dumper, data):
@@ -58,6 +62,7 @@ def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
     np.random.seed(seed + rank)
     random.seed(seed + rank)
+    cudnn.benchmark = True
 
 def yaml_setup():
     _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
@@ -127,6 +132,7 @@ def run_main(args = None):
     # fully initialize distributed device environment
     device = init_distributed_device(args)
     args.wandb = 'wandb' in args.report_to or 'all' in args.report_to
+    logging.info(f"Tensorboard is currently disabled for compatibility reasons.")
     args.tensorboard = 'tensorboard' in args.report_to or 'all' in args.report_to
     if is_master(args):
         args.tensorboard_path = os.path.join(args.logs, args.name, "tensorboard") if args.tensorboard else ''
@@ -161,6 +167,10 @@ def run_main(args = None):
         args.gather_with_grad = False
         args.local_loss = False
 
+    if args.dc_eval:
+        datacomp_eval(args)
+        exit(0)
+
     assert not (args.pretrained and args.pretrained_head), "Cannot pass both pretrained and pretrained-head arguments"
     random_seed(args.seed, 0)
     if args.linear_probe:
@@ -169,7 +179,10 @@ def run_main(args = None):
         elif args.model in ["efficientnet-b0", "efficientnet-b1", "efficientnet-b2", "efficientnet-b3", "efficientnet-b4", "efficientnet-b5"]:
             model, preprocess_train, preprocess_val = efficientnet_loader(args.model)  
         else:
-            model = timm.create_model(args.model, pretrained=True)
+            if args.timm_classifier_head_size > -1:
+                model = timm.create_model(args.model, pretrained=True, num_classes=args.timm_classifier_head_size)
+            else:
+                model = timm.create_model(args.model, pretrained=True)
             preprocess_train = image_transform(args.image_size, is_train=True)
             preprocess_val = image_transform(args.image_size, is_train=False)
         model.to(device=device)
@@ -286,7 +299,15 @@ def run_main(args = None):
     if args.resume is not None:
         if os.path.isfile(args.resume):
             checkpoint = torch.load(args.resume, map_location=device)
-            sd = checkpoint["state_dict"]
+            try:
+                sd = checkpoint["state_dict"]
+            except KeyError:
+                #torchvision labeling
+                try:
+                    sd = checkpoint["model"]
+                except KeyError:
+                    #bioclip/hf labeling
+                    sd = checkpoint
             if args.add_trunk:
                 keys = list(sd.keys())
                 keys_mod = list()
@@ -297,13 +318,14 @@ def run_main(args = None):
                         keys_mod.append(k)
                 vals = list(sd.values())
                 sd = {k : v for k, v in zip(keys_mod, vals)}
-                print("add trunk")
-                print(sd.keys())
             if args.fine_tune:
                 # resuming a train checkpoint w/o epoch and optimizer state
                 if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
                     sd = {k[len('module.'):]: v for k, v in sd.items()}
-                model.load_state_dict(sd)
+                try:
+                    model.load_state_dict(sd)
+                except:
+                    load_checkpoint(model, args.resume)
             elif 'epoch' in checkpoint:
                 # resuming a train checkpoint w/ epoch and optimizer state
                 start_epoch = checkpoint["epoch"]
@@ -317,14 +339,18 @@ def run_main(args = None):
                 logging.info(f"=> resuming checkpoint '{args.resume}' (epoch {start_epoch})")
             else:
                 # loading a bare (model only) checkpoint for fine-tune or evaluation
-                model.load_state_dict(checkpoint)
+                try:
+                    model.load_state_dict(sd)
+                except:
+                    load_checkpoint(model, args.resume)
                 logging.info(f"=> loaded checkpoint '{args.resume}' (epoch {start_epoch})")
         else:
             logging.info("=> no checkpoint found at '{}'".format(args.resume))
 
     # initialize datasets
     data = get_data(args, (preprocess_train, preprocess_val), epoch=start_epoch)
-    assert len(data), 'At least one train or eval dataset must be specified.'
+    if not args.dc_eval:
+        assert len(data), 'At least one train or eval dataset must be specified.'
 
     #LSUV weight initialization
     if args.resume is None and 'train' in data and args.lsuv:
@@ -426,7 +452,6 @@ def run_main(args = None):
 
         if any(v in data for v in eval_datasets):
             evaluate(model, data, completed_epoch, args, writer)
-
         # Saving checkpoints.
         if args.save_logs:
             checkpoint_dict = {

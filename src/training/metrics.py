@@ -63,7 +63,7 @@ def log_confusion_matrix(args, output, labels):
     # print("output before")
     # print(output)
     # print(output.size())
-    output = output.topk(max((1, 5)), 1, True, True)
+    output = output.topk(max((1, min(5, len(args.classnames)))), 1, True, True)
     # print("output after topk")
     output = output[1].t()[0].data.cpu()
     output = np.array(output, ndmin=1)  
@@ -82,6 +82,8 @@ def log_confusion_matrix(args, output, labels):
 def write_confusion_matrix(args, output, labels, classes):
     #confusion matrix
     cf_matrix = confusion_matrix(args.y_true, args.y_pred)
+    true_labels = np.unique(args.y_true).tolist()
+    frequency_pred = [round(args.y_pred.count(i) / len(args.y_pred), 3) for i in true_labels]
     if len(cf_matrix) != len(classes):
         classes = np.array(classes)
         classes = classes[np.unique(args.y_pred + args.y_true).tolist()].tolist()
@@ -96,21 +98,39 @@ def write_confusion_matrix(args, output, labels, classes):
     logging.info('Writing confusion matrix')
     df_cm.to_csv(os.path.join(args.conf_path, "confusion_matrix_{}.csv".format(res)), index=False)
     per_class_acc = pd.Series(np.diag(df_cm), index=[df_cm.index, df_cm.columns])
-    per_class_acc = pd.DataFrame(per_class_acc).transpose()
-    per_class_acc.columns = [''.join(col[1:]) for idx, col in enumerate(per_class_acc.columns.values)]
+    per_class_acc = pd.DataFrame(per_class_acc)
+    per_class_acc = per_class_acc.reset_index()
+    per_class_acc.columns = ['True Class', 'Predicted Class', 'Accuracy']
+    FN = []
+    FP = []
+    for idx, l in enumerate(true_labels):
+        FN.append(sum(cf_matrix[idx,:]) - cf_matrix[idx,idx])
+        FP.append(sum(cf_matrix[:,idx]) - cf_matrix[idx,idx])
+    per_class_acc['TP'] = np.diag(cf_matrix)
+    per_class_acc['FN'] = FN
+    per_class_acc['FP'] = FP
+    per_class_acc['Precision'] = round(per_class_acc['TP'] / (per_class_acc['TP'] + per_class_acc['FP']), 3)
+    per_class_acc['Recall'] = round(per_class_acc['TP'] / (per_class_acc['TP'] + per_class_acc['FN']), 3)
+    per_class_acc['Frequency'] = frequency_pred
+    per_class_acc['Balanced Accuracy'] = round((per_class_acc['Precision'] + per_class_acc['Recall']) / 2, 3)
+    per_class_acc = per_class_acc.drop(['TP', 'FN', 'FP', 'Predicted Class'], axis=1)
+    # per_class_acc = per_class_acc.transpose()
+    # per_class_acc.columns = [''.join(col[1:]) for idx, col in enumerate(per_class_acc.columns.values)]
     per_class_acc.to_csv(os.path.join(args.conf_path, "per_class_acc_{}.csv".format(res)), index=False)
     font_size = round(1 * 100//len(classes), 2)
     if font_size < 0.1:
         font_size = 0.1
     sn.set(font_scale=font_size)
-    #if len(classes) < 201:
-    start = time.time()
-    print("Saving confusion matrix: this might take a while...")
-    plt.figure(figsize = (168,80), dpi=200)
-    sn.heatmap(df_cm, annot=True)
-    plt.savefig(os.path.join(args.conf_path, "confusion_matrix_{}.svg".format(res)), format='svg', dpi=200)        
-    plt.close('all')
-    print("Saving confusion matrix: done in {} seconds".format(time.time() - start))
+    if len(classes) < 201:
+        start = time.time()
+        logging.info("Saving confusion matrix: this might take a while...")
+        plt.figure(figsize = (168,80), dpi=200)
+        sn.heatmap(df_cm, annot=True)
+        plt.savefig(os.path.join(args.conf_path, "confusion_matrix_{}.svg".format(res)), format='svg', dpi=200)        
+        plt.close('all')
+        logging.info("Saving confusion matrix: done in {} seconds".format(time.time() - start))
+    else:
+        logging.warning("Confusion matrix not saved: more than 200 classes (you can disable this if you like)")
     #class-class clustering matrix
     logging.info('Saving class-class clustering matrix')
     logit_concat = np.concatenate(args.logits, axis=0)
@@ -122,5 +142,3 @@ def write_confusion_matrix(args, output, labels, classes):
     except Exception as e:
         logging.warning("Clustering matrix did not save")
         logging.warning(e)
-
-
