@@ -122,6 +122,8 @@ def multi_accuracy(output, target, topk=(1,)):
 def accuracy(output, target, topk=(1,)):
     pred = output.topk(max(topk), 1, True, True)[1].t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
+    # print("Preds: ", pred)
+    # print("Target: ", target)
     return [float(correct[:k].reshape(-1).float().sum(0, keepdim=True).cpu().numpy()) for k in topk]
 
 def run(model, classifier, dataloader, args, idx=None, split=None):
@@ -150,13 +152,9 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
             else:
                 target = target[0]
             if split == 'real':
-                #logging.info("target size b4: {}".format(len(target)))
-                #logging.info("images size b4: {}".format(len(images)))
                 index_mask = []
                 target_list = []
                 for idr, t in enumerate(target):
-                    #logging.info("target idr: {}".format(target[idr]))
-                    #logging.info("idx: {}".format(idx))
                     if t == '':
                         index_mask.append(0)
                     for tgt in target[idr]:
@@ -201,11 +199,12 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                 images = images[match_idx].to(args.device)  
                 if images.size(0) == 0:
                     continue
-                if not args.isint and args.caption_subset != "confounding":
-                    try:
+                if not args.isint:
+                    if isinstance(idx, np.ndarray):
                         idx_l = idx.tolist()
-                    except:
-                        target = torch.tensor([idx.index(t) for t in target]).to(args.device)
+                    elif isinstance(idx, list):
+                        idx_l = idx
+                    target = torch.tensor([idx_l.index(t) for t in target]).to(args.device)
                 elif args.isint and split == "r":
                     ir_idx = get_ir_idx()
                     target = torch.tensor(ir_idx[target.cpu()]).to(args.device)
@@ -270,8 +269,6 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                             image_features = l2norm(model.to_visual_latent(image_features[1][:, 1:])).mean(dim=1)
                         else:
                             image_features = l2norm(model.to_visual_latent(image_features[1][:, 0]))
-                        #logging.info("size of image_features {}, size of classifier {}".format(image_features.size(), classifier.size()))
-                        #FILIP: einsum('b t d, b i d -> b t i', *einsum_args)
                         logits = model.temperature.exp() * image_features @ classifier                             
                     else:
                         image_features = model.encode_image(images)
@@ -299,7 +296,6 @@ def run(model, classifier, dataloader, args, idx=None, split=None):
                 continue
             elif logits.size(1) != args.prob_size:
                 logits = logits[:, :args.prob_size]
-
             # measure accuracy with adjustments
             if args.caption_subset == "confounding":
                 not_conf_idx = [i for i in range(args.prob_size) if i not in conf_idx]

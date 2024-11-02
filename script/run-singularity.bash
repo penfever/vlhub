@@ -32,8 +32,8 @@ singularity \
   --overlay /vast/work/public/ml-datasets/imagenet/imagenet-val.sqf:ro \
   --overlay /scratch/projects/hegdelab/bf996/datasets/objectnet.sqf:ro \
   --overlay /vast/work/public/ml-datasets/open-images-dataset/open-images-dataset.sqf:ro \
-  --overlay /scratch/bf996/datasets/imagenet-c.sqf:ro \
-  --overlay /scratch/bf996/datasets/imagenet-style.sqf:ro \
+  --overlay /scratch/projects/hegdelab/bf996/datasets/imagenet-c.sqf:ro \
+  --overlay /scratch/projects/hegdelab/bf996/datasets/imagenet-style.sqf:ro \
   /scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
   /bin/bash -c "
  source /ext3/env.sh; export PYTHONPATH=$PYTHONPATH:/scratch/bf996/pytorch-image-models
