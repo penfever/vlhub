@@ -1,0 +1,37 @@
+model_list = [
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-alttext-sim/checkpoints/epoch_50.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-alttext-sim-clean-cnm-dep-pre/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-alttext-sim-clean-cnm-dep-pre-tokstr/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-alttext-sim-cnm-dep/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-alttext-sim-trans/checkpoints/epoch_50.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-blipcaption/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-classname/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-classname-tokred/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-description/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-oai-long/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-tokstrip/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-tags/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-title/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-addcn/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-addcn-deplural/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-addcn-deplural-reorder/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-clean/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-simplecaptions/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-trans/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-oai/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ofacaption/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-random/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-scramble/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-no-overlap/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-noperm-oai/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-no-overlap-short-oai/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-gtcaption-ideo/checkpoints/epoch_60.pt',
+    '/scratch/bf996/vlhub/logs/demystifying-clip-captions/oi100-alttext-sim/checkpoints/epoch_60.pt',
+]
+
+#/scratch/bf996/vlhub/logs/demystifying-clip-captions/oi100-classname/checkpoints/epoch_60.pt
+#/scratch/bf996/vlhub/logs/demystifying-clip-captions/in100-ttd-clean-gt/checkpoints/epoch_60.pt
+#/scratch/bf996/vlhub/logs/demystifying-clip-captions/oi100-descr/checkpoints/epoch_60.pt
+#/scratch/bf996/vlhub/logs/demystifying-clip-captions/oi100-tags/checkpoints/epoch_60.pt

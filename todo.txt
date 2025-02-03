@@ -16,12 +16,12 @@ in100-gtcaption-short-no-overlap
 in100-gtcaption-tokentrunc
 in100-gtcaption-tokscramble
 in100-gtcaption-tokstrip
-in100-ttd-simplecaption
 in100-gtcaption
 in100-ofacaption
 in100-title
 in100-tags
 in100-description
+in100-titletagsdescr-simplecaption
 in100-titletagsdescr
 in100-titletagsdescr-trans
 in100-titletagsdescr-tokenstrip

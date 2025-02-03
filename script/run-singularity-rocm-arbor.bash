@@ -22,7 +22,7 @@ if [[ "$(hostname -s)" =~ ^g[r,v,a,h] ]]; then nv="--nv"; fi
 singularity \
     exec $nv \
     --bind $tmp:$HOME/.config/miopen \
-  --overlay /scratch/bf996/singularity_containers/openclip_env_cuda_n.ext3:ro \
+  --overlay /scratch/bf996/singularity_containers/openclip_env_cuda_n.ext3:rw \
   --overlay /vast/work/public/ml-datasets/bf996/CaptionNet/in100.sqf:ro \
   --overlay /scratch/projects/hegdelab/bf996/datasets/arboretum_rare_combined.sqf:ro \
   --overlay /scratch/projects/hegdelab/bf996/datasets/arboretum_test_set_16M.sqf:ro \
